@@ -1,8 +1,3 @@
---// SAE Speed Tracker (realtime + auto session)
---// Reads game.Players.LocalPlayer.leaderstats.Speed and updates instantly on change.
---// Session auto-starts when your Speed starts rising (you walk on the treadmill)
---// and auto-resets when you jump off it (or stop gaining for a while).
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
