@@ -11,8 +11,8 @@ if not speedStat then
     return
 end
 
--- Compact number formatter to match game UI (e.g. 252.7B)
-local function formatCompact(value)
+-- Compact number formatter with custom decimal places
+local function formatCompact(value, decimals)
     if type(value) ~= "number" then
         value = tonumber(value) or 0
     end
@@ -28,18 +28,33 @@ local function formatCompact(value)
     if i == 1 then
         return tostring(math.floor(value))
     else
-        return string.format("%.1f%s", value, suffixes[i])
+        local fmt = string.format("%%.%df%%s", decimals or 1)
+        return string.format(fmt, value, suffixes[i])
     end
 end
 
--- Create clean tracking GUI overlay
+-- Format elapsed seconds into HH:MM:SS or MM:SS
+local function formatTime(seconds)
+    seconds = math.floor(seconds)
+    local hrs = math.floor(seconds / 3600)
+    local mins = math.floor((seconds % 3600) / 60)
+    local secs = seconds % 60
+    
+    if hrs > 0 then
+        return string.format("%02d:%02d:%02d", hrs, mins, secs)
+    else
+        return string.format("%02d:%02d", mins, secs)
+    end
+end
+
+-- Create clean tracking GUI overlay (height increased to 115 to fit time)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SpeedGainTracker"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 220, 0, 90)
+Frame.Size = UDim2.new(0, 220, 0, 115)
 Frame.Position = UDim2.new(0.02, 0, 0.8, 0)
 Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 Frame.BorderSizePixel = 0
@@ -60,7 +75,7 @@ Title.Font = Enum.Font.GothamBold
 Title.Parent = Frame
 
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, 0, 0, 50)
+StatusLabel.Size = UDim2.new(1, 0, 0, 75)
 StatusLabel.Position = UDim2.new(0, 0, 0, 30)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 128)
@@ -99,25 +114,33 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 local initialSpeed = speedStat.Value
-local peakSpeed = initialSpeed
+local startTime = os.time()
 
--- Update display function with formatting
+-- Update display function
 local function updateDisplay()
     local currentSpeed = speedStat.Value
-    if currentSpeed > peakSpeed then
-        peakSpeed = currentSpeed
-    end
     local gain = currentSpeed - initialSpeed
+    local elapsedTime = os.time() - startTime
     
-    StatusLabel.Text = string.format("Current: %s\nInitial: %s\nGain: +%s", 
-        formatCompact(currentSpeed), 
-        formatCompact(initialSpeed), 
-        formatCompact(gain)
+    -- Current shows 3 decimal places (6 total significant digits like 254.321B), others show 1 decimal place
+    StatusLabel.Text = string.format("Current: %s\nInitial: %s\nGain: +%s\nTime: %s", 
+        formatCompact(currentSpeed, 3), 
+        formatCompact(initialSpeed, 1), 
+        formatCompact(gain, 1),
+        formatTime(elapsedTime)
     )
 end
 
 -- Listen for changes on the Speed stat value
 speedStat.Changed:Connect(updateDisplay)
-updateDisplay()
 
-print("Speed Gain Tracker with formatting & drag support initialized!")
+-- Background loop to update the timer every second
+task.spawn(function()
+    while true do
+        updateDisplay()
+        task.wait(1)
+    end
+end)
+
+updateDisplay()
+print("Speed Gain Tracker updated successfully!")
