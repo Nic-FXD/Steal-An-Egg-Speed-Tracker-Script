@@ -1,5 +1,7 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 -- Wait for leaderstats and Speed stat safely
@@ -9,6 +11,46 @@ local speedStat = leaderstats and leaderstats:WaitForChild("Speed", 10)
 if not speedStat then
     warn("leaderstats.Speed could not be found!")
     return
+end
+
+-- Automatically find the user's plot based on character position proximity
+local function getMyPlotFolder()
+    local character = LocalPlayer.Character
+    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+    local plotsFolder = Workspace:FindFirstChild("Plots")
+    
+    if not plotsFolder then return nil end
+    
+    local closestPlot = nil
+    local shortestDistance = math.huge
+    
+    for _, plot in ipairs(plotsFolder:GetChildren()) do
+        local modelPart = plot:FindFirstChildWhichIsA("BasePart") or plot:FindFirstChild("TreadmillBottom") or plot:FindFirstChild("TreadmillUpgrade")
+        if modelPart and hrp then
+            local dist = (modelPart.Position - hrp.Position).Magnitude
+            if dist < shortestDistance then
+                shortestDistance = dist
+                closestPlot = plot
+            end
+        end
+    end
+    
+    return closestPlot
+end
+
+-- Safely load the Save module to track treadmill upgrade levels[cite: 6]
+local success, Save = pcall(function()
+    return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Save"))
+end)
+
+local function getTreadmillLevel()
+    if success and Save then
+        local data = Save.Await()
+        if data and data.TreadmillUpgradeLevel then
+            return tostring(data.TreadmillUpgradeLevel)
+        end
+    end
+    return "?"
 end
 
 -- Compact number formatter with custom decimal places
@@ -47,14 +89,14 @@ local function formatTime(seconds)
     end
 end
 
--- Create clean tracking GUI overlay (height increased to 115 to fit time)
+-- Create clean tracking GUI overlay
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SpeedGainTracker"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 220, 0, 115)
+Frame.Size = UDim2.new(0, 240, 0, 150)
 Frame.Position = UDim2.new(0.02, 0, 0.8, 0)
 Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 Frame.BorderSizePixel = 0
@@ -68,14 +110,14 @@ UICorner.Parent = Frame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundTransparency = 1
-Title.Text = "Speed Gain Tracker"
+Title.Text = "Speed & Treadmill Tracker"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
 Title.Parent = Frame
 
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, 0, 0, 75)
+StatusLabel.Size = UDim2.new(1, 0, 0, 110)
 StatusLabel.Position = UDim2.new(0, 0, 0, 30)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 128)
@@ -85,7 +127,7 @@ StatusLabel.TextWrapped = true
 StatusLabel.Parent = Frame
 
 -- Dragging functionality implementation
-local dragging, dragInput, dragStart, startPos
+local dragging, dragStart, startPos
 
 Frame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -115,18 +157,25 @@ end)
 
 local initialSpeed = speedStat.Value
 local startTime = os.time()
+local myPlot = getMyPlotFolder()
+if myPlot then
+    print("Successfully targeted your plot:", myPlot.Name)
+end
 
 -- Update display function
 local function updateDisplay()
     local currentSpeed = speedStat.Value
     local gain = currentSpeed - initialSpeed
     local elapsedTime = os.time() - startTime
+    local currentLevel = getTreadmillLevel()
+    local plotName = myPlot and myPlot.Name or "Unknown"
     
-    -- Current shows 3 decimal places (6 total significant digits like 254.321B), others show 1 decimal place
-    StatusLabel.Text = string.format("Current: %s\nInitial: %s\nGain: +%s\nTime: %s", 
+    StatusLabel.Text = string.format("Plot: %s\nCurrent: %s\nInitial: %s\nGain: +%s\nTreadmill Lvl: %s\nTime: %s", 
+        plotName,
         formatCompact(currentSpeed, 3), 
         formatCompact(initialSpeed, 1), 
         formatCompact(gain, 1),
+        currentLevel,
         formatTime(elapsedTime)
     )
 end
@@ -134,13 +183,22 @@ end
 -- Listen for changes on the Speed stat value
 speedStat.Changed:Connect(updateDisplay)
 
+if success and Save then
+    pcall(function()
+        Save.Watch("TreadmillUpgradeLevel"):Connect(updateDisplay)
+    end)
+end
+
 -- Background loop to update the timer every second
 task.spawn(function()
     while true do
+        if not myPlot then
+            myPlot = getMyPlotFolder() -- Re-check if plot wasn't loaded initially
+        end
         updateDisplay()
         task.wait(1)
     end
 end)
 
 updateDisplay()
-print("Speed Gain Tracker updated successfully!")
+print("Tracker initialized with auto-plot detection!")
